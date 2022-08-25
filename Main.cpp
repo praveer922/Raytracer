@@ -3,12 +3,13 @@
 #include "math_constants.h"
 #include "color.h"
 #include "hittable_list.h"
+#include "light_list.h"
 #include "sphere.h"
 #include "camera.h"
 #include "material.h"
 using namespace std;
 
-color ray_color(const ray& r, const hittable& world, int depth) {
+color ray_color(const ray& r, const hittable& world, const light& lights, int depth) {
     hit_record rec;
 
     // If we've exceeded the ray bounce limit, no more light is gathered.
@@ -20,13 +21,11 @@ color ray_color(const ray& r, const hittable& world, int depth) {
         ray scattered;
         color attenuation;
         if (rec.mat_ptr->scatter(r, rec, attenuation, scattered))
-            return attenuation * ray_color(scattered, world, depth - 1);
-        return color(0, 0, 0);
+            return (attenuation * lights.effect_on_point(rec, world)) + (0.5 * ray_color(scattered, world, lights, depth - 1));
     }
 
-    vec3 unit_direction = unit_vector(r.direction());
-    auto t = 0.5 * (unit_direction.y() + 1.0);
-    return (1.0 - t) * color(1.0, 1.0, 1.0) + (t * color(0.5, 0.7, 1.0));
+    return color(0.0, 0.0, 0.0);
+
 }
 
 hittable_list random_scene() {
@@ -65,20 +64,6 @@ hittable_list random_scene() {
         }
     }
 
-    auto material1 = make_shared<dielectric>(1.5);
-    auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
-    auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
-
-
-    //center
-    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material3));
-
-    //left
-    world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, material2));
-
-    //right
-    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material1));
-
     return world;
 }
 
@@ -93,29 +78,34 @@ int main() {
 
     // World
     auto world = random_scene();
+    
+    auto material1 = make_shared<dielectric>(1.5);
+    auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
+    auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
+    //center
+    world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material2));
+    //left
+    world.add(make_shared<sphere>(point3(-3, 1, 0), 1.0, material3));
+    //right
+    world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material1));
 
-    //hittable_list world;
-    //auto material1 = make_shared<dielectric>(1.5);
-    //auto material2 = make_shared<lambertian>(color(0.4, 0.2, 0.1));
-    //auto material3 = make_shared<metal>(color(0.7, 0.6, 0.5), 0.0);
-    //
-    //auto ground_material = make_shared<lambertian>(color(0.35, 0.35, 0.35));
-    //world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
-    ////center
-    //world.add(make_shared<sphere>(point3(0, 1, 0), 1.0, material3));
-    ////left
-    //world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0, material2));
-    ////right
-    //world.add(make_shared<sphere>(point3(4, 1, 0), 1.0, material1));
+    auto ground_material = make_shared<lambertian>(color(0.45, 0.45, 0.45));
+    world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground_material));
+
+    // Lights
+    light_list lights;
+    lights.add(make_shared<dir_light>(unit_vector(vec3(2,-1,-0.1)), 0.05, color(1.0, 1.0, 1.0)));
+    lights.add(make_shared<point_light>(point3(-6.4, 1.0, 2.3), 40.0, color(1.0, 1.0, 1.0)));
+    lights.add(make_shared<point_light>(point3(6.0, 1.0, 2.8), 40.0, color(1.0, 1.0, 1.0)));
 
     // Camera
-    point3 lookfrom(-11, 2, 3.5);
+    point3 lookfrom(-10, 2.2, 3.0);
     point3 lookat(2, 0, 0);
     vec3 vup(0, 1, 0);
-    auto dist_to_focus = 10.0;
-    auto aperture = 0.15;
+    auto dist_to_focus = 7.5;
+    auto aperture = 0.25;
 
-    camera cam(lookfrom, lookat, vup, 25, aspect_ratio, aperture, dist_to_focus);
+    camera cam(lookfrom, lookat, vup, 30, aspect_ratio, aperture, dist_to_focus);
 
     // Render
     ofstream image_file;
@@ -130,7 +120,7 @@ int main() {
                 auto u = (i + random_double()) / (image_width-1);
                 auto v = (j + random_double()) / (image_height-1);
                 ray r = cam.get_ray(u, v);
-                pixel_color += ray_color(r, world, max_depth);
+                pixel_color += ray_color(r, world, lights, max_depth);
             }
             write_color(image_file, pixel_color, samples_per_pixel);
         }
